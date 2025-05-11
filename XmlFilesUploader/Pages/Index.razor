@@ -1,0 +1,103 @@
+﻿@page "/"
+@using Microsoft.AspNetCore.Components.Forms
+@using XmlFilesUploader.Application.Interfaces
+@inject IXmlSectionLoader Loader
+
+<div class="row justify-content-center mt-5">
+    <div class="col-md-6">
+        <div class="card shadow rounded-3">
+            <div class="card-body">
+                <h4 class="card-title mb-4 text-center text-primary">Загрузка XML секций</h4>
+
+                <div class="mb-3">
+                    <label class="form-label">Выберите XML-файл:</label>
+                    <InputFile OnChange="HandleFileSelected" accept=".xml" class="form-control" />
+                </div>
+
+                @if (SelectedFileName != null)
+                {
+                    <p class="text-muted">Файл: <strong>@SelectedFileName</strong></p>
+                    <button class="btn btn-primary" @onclick="ProcessUpload" disabled="@IsUploading">Загрузить</button>
+                }
+
+                @if (!string.IsNullOrEmpty(Message))
+                {
+                    <div class="mt-4 alert @AlertClass" role="alert">
+                        @Message
+                    </div>
+                }
+            </div>
+        </div>
+    </div>
+</div>
+@code {
+    IBrowserFile? _selectedFile;
+    string? SelectedFileName;
+    string? Message;
+    string AlertClass = "alert-info";
+    bool IsUploading = false;
+    CancellationTokenSource? _cts;
+
+    private void HandleFileSelected(InputFileChangeEventArgs e)
+    {
+        var file = e.File;
+        var fileName = file?.Name;
+
+        if (fileName == null || !fileName.EndsWith(".xml", StringComparison.OrdinalIgnoreCase))
+        {
+            _selectedFile = null;
+            SelectedFileName = null;
+            Message = "Файл должен быть в формате XML (.xml)";
+            AlertClass = "alert-warning";
+            return;
+        }
+
+        _selectedFile = file;
+        SelectedFileName = file.Name;
+        Message = null;
+    }
+
+    private async Task ProcessUpload()
+    {
+        if (_selectedFile == null)
+        {
+            Message = "Сначала выберите XML-файл.";
+            AlertClass = "alert-warning";
+            return;
+        }
+
+        IsUploading = true;
+        _cts = new CancellationTokenSource();
+
+        try
+        {
+            using var stream = _selectedFile.OpenReadStream();
+            var result = await Loader.LoadXmlAsync(stream, _cts.Token);
+
+            if (!result.IsSuccess)
+            {
+                Message = $"Ошибка: {result.ErrorMessage}";
+                AlertClass = "alert-danger";
+            }
+            else
+            {
+                Message = $"Загружено секций: {result.SavedCount}";
+                AlertClass = "alert-success";
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            Message = "Загрузка была отменена.";
+            AlertClass = "alert-warning";
+        }
+        catch (Exception ex)
+        {
+            Message = $"Неизвестная ошибка: {ex.Message}";
+            AlertClass = "alert-danger";
+        }
+        finally
+        {
+            IsUploading = false;
+        }
+    }
+}
